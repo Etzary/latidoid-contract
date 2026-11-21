@@ -113,11 +113,34 @@ export const updateLocationInputSchema = z.object({
 });
 export type UpdateLocationInput = z.infer<typeof updateLocationInputSchema>;
 
+/**
+ * Ubicación aproximada deducida de la IP del acceso. La resuelve el backend con
+ * una base geo-IP local (DB-IP Lite), nunca con un servicio externo. Todos los
+ * campos son opcionales: si la IP es privada o no está en la base, no hay nada
+ * que mostrar.
+ */
+export const accessLogLocationSchema = z.object({
+  /** Ciudad o municipio, en el idioma que trae la base (inglés). */
+  city: z.string().optional(),
+  /** Estado, provincia o región. */
+  region: z.string().optional(),
+  /** País. */
+  country: z.string().optional(),
+  /** Código ISO de dos letras del país (p. ej. `MX`), útil para la bandera. */
+  country_code: z.string().optional(),
+  /** Centroide aproximado, solo para pintar un mapa; no es la posición real. */
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+});
+export type AccessLogLocation = z.infer<typeof accessLogLocationSchema>;
+
 export const accessLogEntrySchema = z.object({
   id: idSchema,
   user_id: idSchema,
   ip: z.string().optional(),
   user_agent: z.string().optional(),
+  /** Ubicación aproximada por IP; ausente si no se pudo resolver. */
+  location: accessLogLocationSchema.optional(),
   created_at: timestampSchema,
   expires_at: timestampSchema,
 });
