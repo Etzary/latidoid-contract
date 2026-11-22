@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { emailSchema, idSchema, timestampSchema, verificationCodeSchema } from './common.js';
+import {
+  emailSchema,
+  emptyToUndefined,
+  idSchema,
+  timestampSchema,
+  verificationCodeSchema,
+} from './common.js';
 
 /**
  * Política de contraseña, idéntica a `utils.IsStrongPassword` del backend:
@@ -36,12 +42,47 @@ export const userSchema = z.object({
 });
 export type User = z.infer<typeof userSchema>;
 
+/**
+ * Versiones vigentes de los documentos legales. Se publican aquí para que web y
+ * móvil pidan el consentimiento sobre el mismo texto y para que el backend
+ * guarde *qué* versión aceptó el usuario, no solo cuándo.
+ * Al publicar una versión nueva, súbelas: el aviso de "documentos actualizados"
+ * y la vuelta a pedir el consentimiento se apoyan en este número.
+ */
+export const LEGAL_TERMS_VERSION = '1.0';
+export const LEGAL_PRIVACY_VERSION = '1.0';
+
+/**
+ * Consentimiento informado que se exige al crear la cuenta. Los tres booleanos
+ * deben venir en `true`: el backend guarda la versión aceptada junto con la
+ * fecha y la IP desde donde se aceptó, para poder demostrarlo después.
+ *
+ * `accept_medical_data` es el consentimiento explícito para tratar datos
+ * personales sensibles (salud), que la ley exige por separado del aviso general.
+ */
+export const legalConsentSchema = z.object({
+  accept_terms: z
+    .boolean()
+    .refine((value) => value, { message: 'Debes aceptar los Términos y Condiciones' }),
+  accept_privacy: z
+    .boolean()
+    .refine((value) => value, { message: 'Debes aceptar el Aviso de Privacidad' }),
+  accept_medical_data: z.boolean().refine((value) => value, {
+    message: 'Debes autorizar el tratamiento de tus datos personales sensibles',
+  }),
+  terms_version: z.string().min(1),
+  privacy_version: z.string().min(1),
+});
+export type LegalConsent = z.infer<typeof legalConsentSchema>;
+
 export const registerInputSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   first_name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   last_name: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
   phone: z.string().optional(),
+  /** Consentimiento informado. Obligatorio para crear la cuenta. */
+  consent: legalConsentSchema,
 });
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 
@@ -140,3 +181,18 @@ export const configure2faInputSchema = z
     { message: 'Indica un teléfono para el 2FA por SMS', path: ['phone'] },
   );
 export type Configure2faInput = z.infer<typeof configure2faInputSchema>;
+
+/**
+ * Cuerpo de `DELETE /api/auth/account`: elimina la cuenta y sus datos. Exige la
+ * contraseña (para que nadie la borre desde una sesión abierta ajena) y una
+ * confirmación explícita. `reason` es opcional y solo alimenta la analítica de
+ * bajas; no se muestra a nadie.
+ */
+export const deleteAccountInputSchema = z.object({
+  password: z.string().min(1, 'Confirma tu contraseña'),
+  confirm: z
+    .boolean()
+    .refine((value) => value, { message: 'Debes confirmar que quieres eliminar tu cuenta' }),
+  reason: emptyToUndefined(z.string().max(500, 'Máximo 500 caracteres')),
+});
+export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>;

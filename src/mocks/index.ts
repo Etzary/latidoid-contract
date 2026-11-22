@@ -1,7 +1,18 @@
 import { HttpResponse, http, type RequestHandler } from 'msw';
+import type { AccountExport } from '../schemas/account.js';
 import type { AuthSession, User } from '../schemas/auth.js';
-import type { EmergencyAlertResult, EmergencyInfo } from '../schemas/emergency.js';
-import type { AccessLogEntry, CheckInResult, MedicalData, MedicalProfileView } from '../schemas/medical.js';
+import type {
+  EmergencyAlertResult,
+  EmergencyInfo,
+  EmergencyUnavailable,
+} from '../schemas/emergency.js';
+import type {
+  AccessLogEntry,
+  CheckInResult,
+  EmergencyVisibilityResponse,
+  MedicalData,
+  MedicalProfileView,
+} from '../schemas/medical.js';
 import type {
   AnalyticsOverview,
   MedicalAnalytics,
@@ -25,6 +36,8 @@ export type MockState = {
   requires2fa: boolean;
   medicalData: MedicalData;
   emergencyEnabled: boolean;
+  /** Si trae fecha, la ficha está oculta hasta entonces (modo discreto). */
+  emergencyHiddenUntil: string | null;
   emergencyToken: string;
   emergencyBaseUrl: string;
   accessLog: AccessLogEntry[];
@@ -80,6 +93,7 @@ export function createMockState(overrides: Partial<MockState> = {}): MockState {
     requires2fa: false,
     medicalData,
     emergencyEnabled: true,
+    emergencyHiddenUntil: null,
     emergencyToken: 'mock-emergency-token',
     emergencyBaseUrl: 'http://localhost:3000/e',
     accessLog: [
@@ -177,6 +191,26 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
       }),
     ),
     http.post(url('/api/auth/logout'), () => HttpResponse.json({ message: 'Sesión cerrada exitosamente' })),
+    http.get(url('/api/auth/account/export'), () => {
+      const exported: AccountExport = {
+        format: 'geo-intelligence.account-export',
+        format_version: 1,
+        exported_at: now(),
+        account: { email: state.user.email, first_name: state.user.first_name },
+        medical_profile: { ...state.medicalData },
+        access_log: state.accessLog.map((entry) => ({ ...entry })),
+        alerts: [],
+        check_ins: [],
+        pets: [],
+        feedback: [],
+        subscriptions: state.subscription ? [{ ...state.subscription }] : [],
+        payments: [],
+      };
+      return HttpResponse.json(exported);
+    }),
+    http.delete(url('/api/auth/account'), () =>
+      HttpResponse.json({ message: 'Tu cuenta y tus datos se eliminaron.' }),
+    ),
     http.post(url('/api/auth/verify-email'), () =>
       HttpResponse.json({ message: '¡Correo verificado exitosamente!', token: state.token }),
     ),
@@ -200,10 +234,33 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
     http.get(url('/api/medical/profile'), () =>
       HttpResponse.json({
         medical_data: state.medicalData,
-        emergency_access: { enabled: state.emergencyEnabled, url: state.emergencyEnabled ? emergencyUrl(state) : undefined },
+        emergency_access: {
+          enabled: state.emergencyEnabled,
+          url: state.emergencyEnabled ? emergencyUrl(state) : undefined,
+          hidden_until: activeHiddenUntil(state) ?? undefined,
+        },
         updated_at: now(),
       } satisfies MedicalProfileView),
     ),
+    http.put(url('/api/medical/emergency/visibility'), async ({ request }) => {
+      const body = (await request.json()) as { hidden?: boolean; hours?: number };
+      if (body.hidden) {
+        state.emergencyHiddenUntil = new Date(
+          Date.now() + (body.hours ?? 24) * 60 * 60 * 1000,
+        ).toISOString();
+      } else {
+        state.emergencyHiddenUntil = null;
+      }
+
+      const response: EmergencyVisibilityResponse = {
+        message: body.hidden
+          ? 'Tu ficha quedó oculta temporalmente y se publicará sola al cumplirse el plazo.'
+          : 'Tu ficha vuelve a estar visible para quien escanee tu QR.',
+        enabled: !body.hidden,
+        hidden_until: state.emergencyHiddenUntil ?? undefined,
+      };
+      return HttpResponse.json(response);
+    }),
     http.put(url('/api/medical/profile'), async ({ request }) => {
       state.medicalData = (await request.json()) as MedicalData;
       return HttpResponse.json({ message: 'Información médica guardada correctamente' });
@@ -294,14 +351,30 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
 
     // --- Rutas públicas de emergencia ---
     http.get(url('/api/emergency/:token'), ({ params }) => {
-      if (!state.emergencyEnabled || params.token !== state.emergencyToken) {
-        return HttpResponse.json({ error: 'enlace de emergencia no válido o desactivado' }, { status: 404 });
+      if (params.token !== state.emergencyToken) {
+        return HttpResponse.json({ error: 'enlace de emergencia no válido' }, { status: 404 });
       }
+
+      const hiddenUntil = activeHiddenUntil(state);
+      if (!state.emergencyEnabled || hiddenUntil) {
+        const unavailable: EmergencyUnavailable = {
+          available: false,
+          reason: state.emergencyEnabled ? 'hidden' : 'disabled',
+          message: state.emergencyEnabled
+            ? 'El titular ocultó temporalmente su información médica.'
+            : 'El titular no tiene publicada su información médica.',
+        };
+        return HttpResponse.json(unavailable);
+      }
+
       const info: EmergencyInfo = {
+        available: true,
         name: `${state.user.first_name} ${state.user.last_name}`.trim(),
         updated_at: now(),
         medical_data: state.medicalData,
         degraded: false,
+        disclaimer:
+          'Estos datos los declaró el titular y no sustituyen una valoración médica. En una emergencia llama al 911.',
         can_alert: (state.medicalData.emergency_contacts ?? []).length > 0,
         alert_channels: ['sms', 'email'],
       };
@@ -480,4 +553,10 @@ function petAnalytics(): PetAnalytics {
 
 function emergencyUrl(state: MockState): string {
   return `${state.emergencyBaseUrl.replace(/\/+$/, '')}/${state.emergencyToken}`;
+}
+
+/** Fecha de ocultamiento solo si sigue vigente; al vencer la ficha se publica sola. */
+function activeHiddenUntil(state: MockState): string | null {
+  if (!state.emergencyHiddenUntil) return null;
+  return Date.parse(state.emergencyHiddenUntil) > Date.now() ? state.emergencyHiddenUntil : null;
 }

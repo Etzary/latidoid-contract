@@ -69,8 +69,43 @@ export const emergencyAccessViewSchema = z.object({
   url: z.string().optional(),
   /** Texto opcional que el titular imprime junto a su QR (no es dato clínico). */
   caption: z.string().optional(),
+  /**
+   * Si viene, el titular ocultó su ficha temporalmente hasta esta fecha; al
+   * vencer se publica sola otra vez. `undefined` significa visible.
+   */
+  hidden_until: timestampSchema.optional(),
 });
 export type EmergencyAccessView = z.infer<typeof emergencyAccessViewSchema>;
+
+/** Máximo de horas que el titular puede ocultar su ficha de una sola vez (7 días). */
+export const EMERGENCY_MAX_HIDDEN_HOURS = 168;
+
+/**
+ * Cuerpo de `PUT /api/medical/emergency/visibility`. Con `hidden: false` la ficha
+ * vuelve a publicarse de inmediato. Con `hidden: true` hay que indicar `hours`:
+ * el ocultamiento se revierte solo al cumplirse el plazo, sin que el titular
+ * tenga que acordarse de reactivarlo.
+ */
+export const emergencyVisibilityInputSchema = z
+  .object({
+    hidden: z.boolean(),
+    hours: z.number().int().min(1).max(EMERGENCY_MAX_HIDDEN_HOURS).optional(),
+  })
+  .refine((value) => !value.hidden || value.hours !== undefined, {
+    message: 'Indica cuántas horas quieres ocultar tu ficha',
+    path: ['hours'],
+  });
+export type EmergencyVisibilityInput = z.infer<typeof emergencyVisibilityInputSchema>;
+
+/** Respuesta de `PUT /api/medical/emergency/visibility`. */
+export const emergencyVisibilityResponseSchema = z.object({
+  message: z.string(),
+  /** Estado resultante: la ficha queda accesible o no. */
+  enabled: z.boolean(),
+  /** Cuándo se republica sola; ausente si quedó visible. */
+  hidden_until: timestampSchema.optional(),
+});
+export type EmergencyVisibilityResponse = z.infer<typeof emergencyVisibilityResponseSchema>;
 
 export const lastLocationViewSchema = z.object({
   location: geoPointSchema,
