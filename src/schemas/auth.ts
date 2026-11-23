@@ -136,8 +136,35 @@ export const verify2faInputSchema = z.object({
 });
 export type Verify2faInput = z.infer<typeof verify2faInputSchema>;
 
-export const googleInputSchema = z.object({ id_token: z.string().min(1) });
+/**
+ * Alta o acceso con Google. El `id_token` siempre es obligatorio; el
+ * consentimiento informado solo viaja en la segunda llamada, cuando el backend
+ * avisa de que la cuenta todavía no existe (ver `googleRequiresConsentSchema`).
+ */
+export const googleInputSchema = z.object({
+  id_token: z.string().min(1),
+  consent: legalConsentSchema.optional(),
+});
 export type GoogleInput = z.infer<typeof googleInputSchema>;
+
+/**
+ * `POST /api/auth/google` responde de dos maneras: entrega la sesión, o —si el
+ * correo de Google aún no tiene cuenta— pide el consentimiento informado antes
+ * de crearla. En ese segundo caso no se crea nada: el cliente vuelve a llamar
+ * con el mismo `id_token` y el consentimiento aceptado.
+ */
+export const googleRequiresConsentSchema = z.object({
+  requires_consent: z.literal(true),
+  message: z.string(),
+  email: emailSchema.optional(),
+});
+export type GoogleRequiresConsent = z.infer<typeof googleRequiresConsentSchema>;
+
+export const googleResponseSchema = z.union([authSessionSchema, googleRequiresConsentSchema]);
+export type GoogleResponse = z.infer<typeof googleResponseSchema>;
+
+export const isGoogleRequiresConsent = (value: GoogleResponse): value is GoogleRequiresConsent =>
+  'requires_consent' in value && value.requires_consent === true;
 
 /**
  * `google/link` vincula una cuenta de Google a la sesión ya autenticada. Reusa
