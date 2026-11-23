@@ -193,7 +193,7 @@ export function createMockHandlers({ baseUrl, state = createMockState() }: MockH
     http.post(url('/api/auth/logout'), () => HttpResponse.json({ message: 'Sesión cerrada exitosamente' })),
     http.get(url('/api/auth/account/export'), () => {
       const exported: AccountExport = {
-        format: 'geo-intelligence.account-export',
+        format: 'latidoid.account-export',
         format_version: 1,
         exported_at: now(),
         account: { email: state.user.email, first_name: state.user.first_name },

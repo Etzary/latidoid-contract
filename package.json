@@ -1,5 +1,5 @@
 {
-  "name": "@geo-intelligence/contract",
+  "name": "@latidoid/contract",
   "version": "0.1.0",
   "private": true,
   "description": "Contrato compartido de LatidoID: tipos, esquemas Zod y cliente HTTP tipado para web y mobile.",

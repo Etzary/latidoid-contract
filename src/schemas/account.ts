@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { timestampSchema } from './common.js';
 
 /** Marca del archivo de exportación, para que se reconozca al reabrirse. */
-export const ACCOUNT_EXPORT_FORMAT = 'geo-intelligence.account-export';
+export const ACCOUNT_EXPORT_FORMAT = 'latidoid.account-export';
 
 /** Versión del formato de exportación. Sube si cambia la estructura. */
 export const ACCOUNT_EXPORT_VERSION = 1;
