@@ -77,23 +77,24 @@ export const emergencyAccessViewSchema = z.object({
 });
 export type EmergencyAccessView = z.infer<typeof emergencyAccessViewSchema>;
 
-/** Máximo de horas que el titular puede ocultar su ficha de una sola vez (7 días). */
-export const EMERGENCY_MAX_HIDDEN_HOURS = 168;
+/** Máximo de minutos que el titular puede ocultar su ficha de una sola vez (7 días). */
+export const EMERGENCY_MAX_HIDDEN_MINUTES = 7 * 24 * 60;
 
 /**
  * Cuerpo de `PUT /api/medical/emergency/visibility`. Con `hidden: false` la ficha
- * vuelve a publicarse de inmediato. Con `hidden: true` hay que indicar `hours`:
+ * vuelve a publicarse de inmediato. Con `hidden: true` hay que indicar `minutes`:
  * el ocultamiento se revierte solo al cumplirse el plazo, sin que el titular
- * tenga que acordarse de reactivarlo.
+ * tenga que acordarse de reactivarlo. Se mide en minutos para permitir plazos
+ * cortos (desde un par de minutos) además de los de días.
  */
 export const emergencyVisibilityInputSchema = z
   .object({
     hidden: z.boolean(),
-    hours: z.number().int().min(1).max(EMERGENCY_MAX_HIDDEN_HOURS).optional(),
+    minutes: z.number().int().min(1).max(EMERGENCY_MAX_HIDDEN_MINUTES).optional(),
   })
-  .refine((value) => !value.hidden || value.hours !== undefined, {
-    message: 'Indica cuántas horas quieres ocultar tu ficha',
-    path: ['hours'],
+  .refine((value) => !value.hidden || value.minutes !== undefined, {
+    message: 'Indica cuánto tiempo quieres ocultar tu ficha',
+    path: ['minutes'],
   });
 export type EmergencyVisibilityInput = z.infer<typeof emergencyVisibilityInputSchema>;
 
