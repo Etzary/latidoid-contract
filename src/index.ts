@@ -8,5 +8,7 @@ export * from './schemas/pets.js';
 export * from './schemas/feedback.js';
 export * from './schemas/ops.js';
 
+export * from './legal/index.js';
+
 export * from './client/errors.js';
 export * from './client/http.js';
